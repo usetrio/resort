@@ -62,7 +62,7 @@ module Resort
         base.send :include, InstanceMethods
 
         base.has_one :previous, class_name: base.name, foreign_key: 'next_id', inverse_of: :next
-        base.belongs_to :next, class_name: base.name, inverse_of: :previous
+        base.belongs_to :next, class_name: base.name, inverse_of: :previous, optional: true
 
         base.after_create :include_in_list!
         base.after_destroy :delete_from_list
