@@ -195,6 +195,7 @@ module Resort
           lock!
           return if another.next_id == id
           another.lock!
+          old_sort = sort
           delete_from_list
           if next_id || (another && another.next_id)
             raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't append element" unless update_attributes(next_id: another.next_id)
@@ -202,8 +203,16 @@ module Resort
           if another
             raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't set this element to another's next" unless another.update_attributes(next_id: id)
           end
-          # OPTIMIZE: Move only the needed elements
-          regenerate_sort!
+          new_sort =
+            if old_sort.nil?
+              another.sort + 1
+            elsif old_sort < another.sort
+              another.sort - 1
+            elsif old_sort > another.sort
+              another.sort
+            end
+          raise ActiveRecord::RecordNotSaved unless update_attributes(sort: new_sort)
+          _increase_next_element_sort(another)
         end
       end
 
@@ -246,18 +255,26 @@ module Resort
         siblings.where(table[:id].not_eq(id))
       end
 
-      def _increase_next_element_sort(element)
-        _change_element_sort(element, :+, :next)
+      def _increase_previous_element_sort(element, sort_limit = nil)
+        _change_element_sort(element, :+, :previous, sort_limit, :<)
       end
 
-      def _decrease_next_element_sort(element)
-        _change_element_sort(element, :-, :next)
+      def _decrease_previous_element_sort(element, sort_limit = nil)
+        _change_element_sort(element, :-, :previous, sort_limit, :<)
       end
 
-      def _change_element_sort(element, operation_method, sibling_method)
+      def _increase_next_element_sort(element, sort_limit = nil)
+        _change_element_sort(element, :+, :next, sort_limit, :>)
+      end
+
+      def _decrease_next_element_sort(element, sort_limit = nil)
+        _change_element_sort(element, :-, :next, sort_limit, :>)
+      end
+
+      def _change_element_sort(element, operation_method, sibling_method, sort_limit = nil, sort_operator = nil)
         loop do
           element = element.public_send(sibling_method)
-          break if element.nil?
+          break if element.nil? or (sort_limit and element.sort.send(sort_operator, sort_limit))
           element.lock!
           raise(ActiveRecord::RecordNotSaved) unless element.update_attributes(sort: element.sort.public_send(operation_method, 1))
         end

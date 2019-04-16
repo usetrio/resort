@@ -290,7 +290,6 @@ module Resort
 
       describe '#push' do
         it 'appends the element to the list' do
-          $haha = true
           @article1.push
 
           article1 = Article.find_by_name('1')
