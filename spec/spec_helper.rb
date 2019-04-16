@@ -23,6 +23,7 @@ ActiveRecord::Schema.define do
     t.string     :name
     t.integer    :price
 
+    t.integer :sort
     t.boolean :first
     t.references :next
 
@@ -36,6 +37,7 @@ ActiveRecord::Schema.define do
 
   create_table :list_items do |t|
     t.string     :name
+    t.integer :sort
     t.boolean :first
     t.references :next
     t.references :ordered_list
