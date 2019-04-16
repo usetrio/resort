@@ -85,11 +85,17 @@ module Resort
         all.where(next_id: nil).first
       end
 
+      # Returns chain in order.
+      # @return ActiveRecord::Relation the ordered elements
+      def ordered
+        all.except(:order).order(:sort)
+      end
+
       # Returns eager-loaded Components in order.
       #
       # OPTIMIZE: Use IdentityMap when available
       # @return [Array<ActiveRecord::Base>] the ordered elements
-      def ordered
+      def eager_ordered
         ordered_elements = []
         elements = {}
 
@@ -135,6 +141,17 @@ module Resort
         self.class.all
       end
 
+      # Regenerate the sort based on the eager ordered list
+      def regenerate_sort!
+        transaction do
+          elements = siblings.eager_ordered
+          elements.each { |element| element.lock! }
+          elements.each_with_index do |element, index|
+            raise(ActiveRecord::RecordNotSaved) unless element.update_attributes(sort: index + 1)
+          end
+        end
+      end
+
       # Includes the object in the linked list.
       #
       # If there are no other objects, it prepends the object so that it is
@@ -159,7 +176,8 @@ module Resort
             raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't set next_id from previous first element." unless update_attributes(next_id: old_first.id)
             raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't reset previous first element" unless old_first.update_attributes(first: false)
           end
-          raise(ActiveRecord::RecordNotSaved) unless update_attributes(first: true)
+          raise(ActiveRecord::RecordNotSaved) unless update_attributes(first: true, sort: 1)
+          _increase_next_element_sort(self) if siblings.count > 0
         end
       end
 
@@ -184,6 +202,8 @@ module Resort
           if another
             raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't set this element to another's next" unless another.update_attributes(next_id: id)
           end
+          # OPTIMIZE: Move only the needed elements
+          regenerate_sort!
         end
       end
 
@@ -195,6 +215,7 @@ module Resort
         self.class.transaction do
           lock!
           raise(ActiveRecord::RecordNotSaved) unless _siblings.last_in_order.update_attributes(next_id: id)
+          raise(ActiveRecord::RecordNotSaved) unless update_attributes(sort: _siblings.count + 1)
         end
       end
 
@@ -204,15 +225,18 @@ module Resort
         if first? && self.next
           self.next.lock!
           raise(ActiveRecord::RecordNotSaved) unless self.next.update_attributes(first: true)
+          _decrease_next_element_sort(self)
         elsif previous
           previous.lock!
           p = previous
           self.previous = nil unless frozen?
-          raise(ActiveRecord::RecordNotSaved) unless p.update_column(:next_id, next_id)
+          raise(ActiveRecord::RecordNotSaved) unless p.update_attributes(next_id: next_id)
+          _decrease_next_element_sort(p) if p.next
         end
         unless frozen?
           self.first = false
           self.next = nil
+          self.sort = nil
           save!
         end
       end
@@ -220,6 +244,23 @@ module Resort
       def _siblings
         table = self.class.arel_table
         siblings.where(table[:id].not_eq(id))
+      end
+
+      def _increase_next_element_sort(element)
+        _change_element_sort(element, :+, :next)
+      end
+
+      def _decrease_next_element_sort(element)
+        _change_element_sort(element, :-, :next)
+      end
+
+      def _change_element_sort(element, operation_method, sibling_method)
+        loop do
+          element = element.public_send(sibling_method)
+          break if element.nil?
+          element.lock!
+          raise(ActiveRecord::RecordNotSaved) unless element.update_attributes(sort: element.sort.public_send(operation_method, 1))
+        end
       end
     end
   end
