@@ -98,6 +98,19 @@ module Resort
         it 'raises when ordering without scope' do
           expect do
             ListItem.ordered
+          end.to_not raise_error(NoMethodError)
+        end
+      end
+
+      describe '#eager_ordered' do
+        it 'returns all elements ordered' do
+          expect(OrderedList.find_by_name('My list').items.eager_ordered.map(&:name)).to eq ['My list item 0', 'My list item 1', 'My list item 2', 'My list item 3']
+          expect(OrderedList.find_by_name('My other list').items.eager_ordered.map(&:name)).to eq ['My other list item 0', 'My other list item 1', 'My other list item 2', 'My other list item 3']
+        end
+
+        it 'raises when ordering without scope' do
+          expect do
+            ListItem.eager_ordered
           end.to raise_error(NoMethodError)
         end
       end
@@ -116,6 +129,7 @@ module Resort
           expect(article).to be_first
           expect(article.next).to be_nil
           expect(article.previous).to be_nil
+          expect(article.sort).to eq(1)
         end
       end
       context 'otherwise' do
@@ -129,8 +143,10 @@ module Resort
           expect(article).to be_last
           expect(article.next_id).to be_nil
           expect(article.previous.name).to eq '1'
+          expect(article.sort).to eq 2
 
           expect(first.next_id).to eq(article.id)
+          expect(first.sort).to eq 1
         end
       end
       after do
@@ -147,6 +163,7 @@ module Resort
             expect(item).to be_first
             expect(item.next).to be_nil
             expect(item.previous).to be_nil
+            expect(item.sort).to eq 1
           end
         end
         context 'otherwise' do
@@ -162,8 +179,10 @@ module Resort
             expect(last).to be_last
             expect(last.next_id).to be_nil
             expect(last.previous.name).to eq '1'
+            expect(last.sort).to eq 2
 
             expect(first.next_id).to eq(last.id)
+            expect(first.sort).to eq(1)
           end
 
           it 'prepends the last element' do
@@ -178,8 +197,11 @@ module Resort
             third = ListItem.where(name: 'Third', ordered_list_id: one_list).first
 
             expect(first).to_not be_first
+            expect(first.sort).to eq 2
             expect(second).to_not be_first
+            expect(second.sort).to eq 3
             expect(third).to be_first
+            expect(third.sort).to eq 1
             expect(third.next.name).to eq 'First'
             expect(first.next.name).to eq 'Second'
             expect(second.next).to be_nil
@@ -196,16 +218,21 @@ module Resort
       context 'when the element is the first' do
         it 'removes the element' do
           article = Article.create(name: 'first!')
-          article2 = Article.create(name: 'second!')
+          Article.create(name: 'second!')
           Article.create(name: 'last!')
 
           article = Article.find_by_name('first!')
           article.destroy
 
           article2 = Article.find_by_name('second!')
+          article3 = Article.find_by_name('last!')
 
           expect(article2).to be_first
           expect(article2.previous).to be_nil
+          expect(article2.sort).to eq 1
+          expect(article3).to be_last
+          expect(article3.previous).to eq(article2)
+          expect(article3.sort).to eq 2
         end
       end
       context 'when the element is in the middle' do
@@ -223,19 +250,23 @@ module Resort
           article3 = Article.find_by_name('last!')
 
           expect(article).to be_first
+          expect(article.sort).to eq 1
           expect(article.next.name).to eq 'last!'
           expect(article3.previous.name).to eq 'first!'
+          expect(article3.sort).to eq 2
         end
       end
       context 'when the element is last' do
         it 'removes the element' do
-          Article.create(name: 'first!')
+          article = Article.create(name: 'first!')
           article2 = Article.create(name: 'second!')
           article3 = Article.create(name: 'last!')
 
           article3.destroy
 
+          expect(article.sort).to eq 1
           expect(article2.next).to be_nil
+          expect(article2.sort).to eq 2
         end
       end
       after do
@@ -259,18 +290,27 @@ module Resort
 
       describe '#push' do
         it 'appends the element to the list' do
+          $haha = true
           @article1.push
 
           article1 = Article.find_by_name('1')
           expect(article1.previous).to eq @article4
           expect(article1.next).to be_nil
+          expect(article1.sort).to eq 4
+
+          expect(@article4.reload.sort).to eq 3
+          expect(@article3.reload.sort).to eq 2
+          expect(@article2.reload.sort).to eq 1
         end
         context 'when the article is already last' do
           it 'does nothing' do
             @article4.push
 
+            @article4 = @article4.reload
+
             expect(@article4.previous.name).to eq '3'
             expect(@article4.next).to be_nil
+            expect(@article4.sort).to eq 4
           end
         end
       end
@@ -284,6 +324,11 @@ module Resort
           expect(article3).to be_first
           expect(article3.previous).to be_nil
           expect(article3.next.name).to eq '1'
+          expect(article3.sort).to eq 1
+
+          expect(@article1.reload.sort).to eq 2
+          expect(@article2.reload.sort).to eq 3
+          expect(@article4.reload.sort).to eq 4
         end
 
         it 'prepends the last element' do
@@ -294,10 +339,15 @@ module Resort
           expect(article4).to be_first
           expect(article4.previous).to be_nil
           expect(article4.next.name).to eq '1'
+          expect(article4.sort).to eq 1
+
+          expect(@article1.reload.sort).to eq 2
+          expect(@article2.reload.sort).to eq 3
+          expect(@article3.reload.sort).to eq 4
         end
 
         it 'will raise ActiveRecord::RecordNotSaved if update fails' do
-          expect(@article2).to receive(:update_attribute).and_return(false)
+          expect(@article2).to receive(:update_attributes).and_return(false)
           expect { @article2.prepend }.to raise_error(ActiveRecord::RecordNotSaved)
         end
 
@@ -305,15 +355,22 @@ module Resort
           it 'does nothing' do
             @article1.prepend
 
+            @article1 = @article1.reload
+
             expect(@article1.previous).to be_nil
             expect(@article1.next.name).to eq '2'
+            expect(@article1.sort).to eq 1
+
+            expect(@article2.reload.sort).to eq 2
+            expect(@article3.reload.sort).to eq 3
+            expect(@article4.reload.sort).to eq 4
           end
         end
       end
 
       describe '#append_to' do
         it 'will raise ActiveRecord::RecordNotSaved if update fails' do
-          expect(@article2).to receive(:update_attribute).and_return(false)
+          expect(@article2).to receive(:update_attributes).and_return(false)
           expect { @article2.append_to(@article3) }.to raise_error(ActiveRecord::RecordNotSaved)
         end
 
@@ -324,7 +381,12 @@ module Resort
             article1 = Article.find_by_name('1')
             expect(article1.next.name).to eq '3'
             expect(article1.previous.name).to eq '2'
+            expect(article1.sort).to eq 2
             expect(@article3.previous.name).to eq '1'
+
+            expect(@article2.reload.sort).to eq 1
+            expect(@article3.reload.sort).to eq 3
+            expect(@article4.reload.sort).to eq 4
           end
 
           it 'sets the other element as first' do
@@ -333,6 +395,11 @@ module Resort
             article2 = Article.find_by_name('2')
             expect(article2.next.name).to eq '1'
             expect(article2).to be_first
+            expect(article2.sort).to eq 1
+
+            expect(@article1.reload.sort).to eq 2
+            expect(@article3.reload.sort).to eq 3
+            expect(@article4.reload.sort).to eq 4
           end
         end
 
@@ -344,9 +411,14 @@ module Resort
             expect(article1).to_not be_first
             expect(article1.previous.name).to eq '3'
             expect(article1.next.name).to eq '4'
+            expect(article1.sort).to eq 3
 
             expect(@article3.next.name).to eq '1'
             expect(@article4.previous.name).to eq '1'
+
+            expect(@article2.reload.sort).to eq 1
+            expect(@article3.reload.sort).to eq 2
+            expect(@article4.reload.sort).to eq 4
           end
 
           it 'resets the first element' do
@@ -355,6 +427,7 @@ module Resort
             article2 = Article.find_by_name('2')
             expect(article2).to be_first
             expect(article2.previous).to be_nil
+            expect(article2.sort).to eq 1
           end
         end
 
@@ -364,15 +437,19 @@ module Resort
 
             article1 = Article.find_by_name('1')
             expect(article1.next.name).to eq '3'
+            expect(article1.sort).to eq 1
 
             article2 = Article.find_by_name('2')
             expect(article2.previous.name).to eq '3'
             expect(article2.next.name).to eq '4'
+            expect(article2.sort).to eq 3
 
             expect(@article3.previous.name).to eq '1'
             expect(@article3.next.name).to eq '2'
+            expect(@article3.reload.sort).to eq 2
 
             expect(@article4.previous.name).to eq '2'
+            expect(@article4.reload.sort).to eq 4
           end
         end
         context 'appending 2 after 4' do
@@ -383,13 +460,17 @@ module Resort
             article3 = Article.find_by_name('3')
 
             expect(article1.next.name).to eq '3'
+            expect(article1.sort).to eq 1
             expect(article3.previous.name).to eq '1'
+            expect(article3.sort).to eq 2
 
             article2 = Article.find_by_name('2')
             expect(article2.previous.name).to eq '4'
             expect(article2).to be_last
+            expect(article2.sort).to eq 4
 
             expect(@article4.next.name).to eq '2'
+            expect(@article4.reload.sort).to eq 3
           end
         end
         context 'appending 4 after 2' do
@@ -399,11 +480,17 @@ module Resort
             article3 = Article.find_by_name('3')
             expect(article3.next).to be_nil
             expect(article3.previous.name).to eq '4'
+            expect(article3.sort).to eq 4
 
             article4 = Article.find_by_name('4')
-            expect(@article2.next.name).to eq '4'
             expect(article4.previous.name).to eq '2'
             expect(article4.next.name).to eq '3'
+            expect(article4.sort).to eq 3
+
+            expect(@article2.next.name).to eq '4'
+            expect(@article2.reload.sort).to eq 2
+
+            expect(@article1.reload.sort).to eq 1
           end
         end
         context 'appending 3 after 1' do
@@ -412,16 +499,20 @@ module Resort
 
             article1 = Article.find_by_name('1')
             expect(article1.next.name).to eq '3'
+            expect(article1.sort).to eq 1
 
             article2 = Article.find_by_name('2')
             expect(article2.previous.name).to eq '3'
             expect(article2.next.name).to eq '4'
+            expect(article2.sort).to eq 3
 
             article3 = Article.find_by_name('3')
             expect(article3.previous.name).to eq '1'
             expect(article3.next.name).to eq '2'
+            expect(article3.sort).to eq 2
 
             expect(@article4.previous.name).to eq '2'
+            expect(@article4.reload.sort).to eq 4
           end
         end
 
@@ -433,7 +524,12 @@ module Resort
             article2 = Article.find_by_name('2')
 
             expect(article1.next.name).to eq '2'
+            expect(article1.sort).to eq 1
             expect(article2.previous.name).to eq '1'
+            expect(article2.sort).to eq 2
+
+            expect(@article3.reload.sort).to eq 3
+            expect(@article4.reload.sort).to eq 4
           end
         end
       end
