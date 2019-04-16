@@ -156,10 +156,10 @@ module Resort
           if _siblings.count > 0
             delete_from_list
             old_first = _siblings.first_in_order
-            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't set next_id from previous first element." unless update_attribute(:next_id, old_first.id)
-            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't reset previous first element" unless old_first.update_attribute(:first, false)
+            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't set next_id from previous first element." unless update_attributes(next_id: old_first.id)
+            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't reset previous first element" unless old_first.update_attributes(first: false)
           end
-          raise(ActiveRecord::RecordNotSaved) unless update_attribute(:first, true)
+          raise(ActiveRecord::RecordNotSaved) unless update_attributes(first: true)
         end
       end
 
@@ -179,10 +179,10 @@ module Resort
           another.lock!
           delete_from_list
           if next_id || (another && another.next_id)
-            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't append element" unless update_attribute(:next_id, another.next_id)
+            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't append element" unless update_attributes(next_id: another.next_id)
           end
           if another
-            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't set this element to another's next" unless another.update_attribute(:next_id, id)
+            raise ActiveRecord::RecordNotSaved, "[Resort] - Couldn't set this element to another's next" unless another.update_attributes(next_id: id)
           end
         end
       end
@@ -194,7 +194,7 @@ module Resort
       def last!
         self.class.transaction do
           lock!
-          raise(ActiveRecord::RecordNotSaved) unless _siblings.last_in_order.update_attribute(:next_id, id)
+          raise(ActiveRecord::RecordNotSaved) unless _siblings.last_in_order.update_attributes(next_id: id)
         end
       end
 
@@ -203,7 +203,7 @@ module Resort
       def delete_from_list
         if first? && self.next
           self.next.lock!
-          raise(ActiveRecord::RecordNotSaved) unless self.next.update_attribute(:first, true)
+          raise(ActiveRecord::RecordNotSaved) unless self.next.update_attributes(first: true)
         elsif previous
           previous.lock!
           p = previous

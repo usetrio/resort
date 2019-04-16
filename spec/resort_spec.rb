@@ -297,7 +297,7 @@ module Resort
         end
 
         it 'will raise ActiveRecord::RecordNotSaved if update fails' do
-          expect(@article2).to receive(:update_attribute).and_return(false)
+          expect(@article2).to receive(:update_attributes).and_return(false)
           expect { @article2.prepend }.to raise_error(ActiveRecord::RecordNotSaved)
         end
 
@@ -313,7 +313,7 @@ module Resort
 
       describe '#append_to' do
         it 'will raise ActiveRecord::RecordNotSaved if update fails' do
-          expect(@article2).to receive(:update_attribute).and_return(false)
+          expect(@article2).to receive(:update_attributes).and_return(false)
           expect { @article2.append_to(@article3) }.to raise_error(ActiveRecord::RecordNotSaved)
         end
 
